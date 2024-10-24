@@ -1,0 +1,8 @@
+cd best_environment
+docker run --gpus all -it -v /home/russell512/my_deeprl_network_ori:/workspace/my_deeprl_network best_environment:latest /bin/bash
+pip install traci
+pip install sumolib
+pip install torch
+cd my_deeprl_network
+export SUMO_HOME="/root/miniconda/envs/py36/share/sumo"
+python3 test.py --base-dir real_a1/ma2c_nclm/ --port 189 train --config-dir config/config_ma2c_nclm_net_ten_times.ini
