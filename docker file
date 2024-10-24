@@ -1,0 +1,54 @@
+# Base image with Ubuntu 20.04 and CUDA 11.1
+FROM nvidia/cuda:11.1.1-cudnn8-runtime-ubuntu20.04
+
+# Set timezone to non-interactive mode
+ENV DEBIAN_FRONTEND=noninteractive
+RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime && echo "UTC" > /etc/timezone
+
+# Install essential system packages and dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    wget \
+    curl \
+    git \
+    ca-certificates \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libffi-dev \
+    libssl-dev \
+    cmake \
+    swig \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Miniconda to /root/miniconda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh \
+    && /bin/bash /tmp/miniconda.sh -b -p /root/miniconda \
+    && rm /tmp/miniconda.sh \
+    && /root/miniconda/bin/conda clean -a -y \
+    && ln -s /root/miniconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
+
+# Set environment variables for Conda
+ENV PATH=/root/miniconda/bin:$PATH
+
+# Create a Conda environment with Python 3.6.9
+RUN conda create -n py36 python=3.6.9 -y
+
+# Activate the environment and install Python packages
+RUN /bin/bash -c "source activate py36 \
+    && conda install -c conda-forge numpy scipy pandas matplotlib seaborn -y \
+    && conda install -c pytorch -c nvidia pytorch==1.9.0 torchvision torchaudio cudatoolkit=11.1 -y \
+    && pip install tensorflow==2.1.0 \
+    && pip install tensorboard gym stable-baselines3 'ray[rllib]' tianshou \
+    && pip install eclipse-sumo==1.11.0"
+
+# Set environment variables to use the py36 environment by default
+ENV PATH=/root/miniconda/envs/py36/bin:/root/miniconda/bin:$PATH
+
+# Set the working directory
+WORKDIR /workspace
+
+# Default command
+CMD ["bash"]
