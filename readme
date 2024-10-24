@@ -1,3 +1,11 @@
+#######今天遇到一台新電腦#################
+
+
+1. create folder best_environment
+2. 把 docker file 放到 best_environment
+3. docker build -t best_environment:latest .
+
+
 cd best_environment
 docker run --gpus all -it -v /home/russell512/my_deeprl_network_ori:/workspace/my_deeprl_network best_environment:latest /bin/bash
 pip install traci
