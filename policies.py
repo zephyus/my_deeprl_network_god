@@ -5,6 +5,34 @@ import torch.nn.functional as F
 from agents.utils import batch_to_seq, init_layer, one_hot, run_rnn
 
 
+#(input shape -> output shape)
+
+# Input Layer (State, n_s)
+#        |
+#        V
+# Fully Connected Layer (n_s > n_fc)
+#        |
+#        V
+# LSTM Layer (n_fc -> n_h(= n_lstm))  <-- includes neighbor information
+#        |
+#        V
+# +-----------------------+ 
+# |                       |
+# | Actor Head (n_h->n_a) |          Critic Head (n_lstm + (neighbor action dimensions if applicable) ->  1) 輸出是1個數字：estimated value of the current state
+# |(Action Probabilities) |          (Value Estimate)
+# +-----------------------+
+
+# Actor Head (actor_head):
+# Input Size: n_lstm (LSTM layer output size)
+# Output Size: n_a (action space dimension)
+
+# Critic Head (critic_head):
+# Input Size: n_lstm + (neighbor action dimensions if applicable)
+#       For identical agents: n_lstm + (n_a * n_n)
+#       For non-identical agents: n_lstm + sum(na_dim_ls)
+# Output Size: 1 (single value representing the estimated value of the current state)
+
+
 class Policy(nn.Module):
     def __init__(self, n_a, n_s, n_step, policy_name, agent_name, identical):
         super(Policy, self).__init__()
