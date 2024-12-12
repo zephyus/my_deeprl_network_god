@@ -414,8 +414,35 @@ class NCMultiAgentPolicy(Policy):
             ps.append(p_i)
         return ps
 ####################################################################################################  KEY
+###這個function就是處理了所有agent的輸入，輸出是LSTM output，所以這個function的下一步就是進入actor head跟critic head 了。在forward中，就是先呼叫run_comm_layers，然後就進入_run_actor_heads跟_run_critic_head了！！
 # fps 存了全部agent 在t-1時的policy(非action唷！)
 # p 則是從fps中選出當前agent鄰居的policy
+
+####################################################################################################
+# _run_comm_layers Function
+#
+# Purpose:
+# This function processes the inputs for all agents at each time step, updates their LSTM states 
+# (hidden and cell states), and applies self-attention to the updated hidden states. The output 
+# of this function is the LSTM hidden states after being processed by self-attention.
+#
+# Inputs:
+# - obs   : Tensor of shape (T, n_agent, n_s) - Observations for all agents over T time steps.
+# - dones : Tensor of shape (T, n_agent)      - Done flags indicating if an episode ended for each agent.
+# - fps   : Tensor of shape (T, n_agent, n_a) - Policy fingerprints (previous policies) for all agents.
+# - states: Tensor of shape (n_agent, 2 * n_h) - Combined hidden and cell states for all agents.
+#
+# Outputs:
+# - outputs: Tensor of shape (T, n_agent, n_h) - The LSTM outputs (hidden states) for all agents over T time steps,
+#            after applying self-attention.
+# - new_states: Tensor of shape (n_agent, 2 * n_h) - The updated hidden and cell states for all agents.
+#
+# Next Steps:
+# The output of this function (LSTM outputs) is passed into the actor head and critic head to generate:
+# - The action probabilities (policy) via the actor head.
+# - The value estimation via the critic head.
+####################################################################################################
+ 
     def _run_comm_layers(self, obs, dones, fps, states):
         
         obs = batch_to_seq(obs) #agnet第一項輸入 ###all map's observation
@@ -429,7 +456,7 @@ class NCMultiAgentPolicy(Policy):
         outputs = []
 
         for t, (x, p, done) in enumerate(zip(obs, fps, dones)): ##For each time step t, process the observations, policy fingerprints, and done flags.
-            ##注意！在送入get_comm_s之前，所有的obs,fps,h,c都是所有agent，所有十字路口綜合起來的！是把第i位agent送入get_comm_s後，第i位agent才去全部的x(obs),p(fps),(h,c)找他自己鄰居的
+            ##注意！在送入get_comm_s之前，所有的obs,fps,h,c都是所有agent，所有十字路口綜合起來一起存在一個list裡的！是把第i位agent送入get_comm_s後，第i位agent才去全部的x(obs),p(fps),(h,c)找他自己鄰居的來用！
             done = done.to(self.device)
             x = x.to(self.device)
             p = p.to(self.device)
@@ -442,6 +469,7 @@ class NCMultiAgentPolicy(Policy):
             for i in range(self.n_agent):
                 n_n = self.n_n_ls[i]
                 if n_n:
+                    ####get_comm_s裡面有三個FC，其實合理，因為 _run_comm_layers是在forward 裡被呼叫的，所以在下面這部，就是第一次真正把輸入流過NN
                     s_i = self._get_comm_s(i, n_n, x, h, p)   ##return s_i。當前agent number(i)、n_n(number of neighbors)、x(all agent's observation),h(all LSTM's hidden state),p(all agents policy)丟進去get_comm_s，他就會自動篩選出鄰居的資訊。得到符合此位agent(agent i)的專屬s_i
                 else:
                     if self.identical:
@@ -450,6 +478,19 @@ class NCMultiAgentPolicy(Policy):
                         x_i = x[i].narrow(0, 0, self.n_s_ls[i]).unsqueeze(0)
                     s_i = F.relu(self.fc_x_layers[i](x_i))
                 ####執行到這裡，就準備把s_i餵入LSTM了！
+                '''
+                LSTM Forward Pass
+At each time step, the LSTM takes:
+
+1.Input (x_t): The current input (feature vector).
+2.Previous Hidden State (h_t-1): The hidden state from the previous time step.
+3.Previous Cell State (c_t-1): The cell state from the previous time step.
+
+The LSTM updates these states and produces:
+
+1.New Hidden State (h_t): The output of the LSTM at the current time step.(除了是short term output，也是預測的目標output)
+2.New Cell State (c_t): The updated long-term memory.
+                '''
                 ##整理一下要餵入LSTM的東西
                 ##1. s_i：經過FC處理後的所有agent能觀察到的訊息
                 ##2. h[i] : current hidden  states for agent i
@@ -457,6 +498,24 @@ class NCMultiAgentPolicy(Policy):
                 ##unsqueeze(0)： adds an extra dimension to make their shape (1, n_h) (suitable for LSTM input).
                 ####LSTM 層根據當前的輸入 s_i 和先前的隱藏狀態(h_i)以及細胞狀態(c_i)。來計算新的隱藏狀態 next_h_i 和細胞狀態 next_c_i 
                 h_i, c_i = h[i].unsqueeze(0) * (1 - done), c[i].unsqueeze(0) * (1 - done)
+                ###輸入流過的第二個NN(LSTM)
+                ###LSTM的輸出請看 ： https://chatgpt.com/share/675b22d9-4400-8013-8102-1a28d8c13ffe
+                '''
+                Key Context to Differentiate
+                lstm_out, (h_n, c_n) = self.lstm(x)   # lstm_out contains hidden states for all time steps: shape (batch_size, seq_length, hidden_size)
+
+                接下來分為兩種使用LSTM output的方式
+                Sequence-to-One: If after running this LSTM operation, you only take the last hidden state (next_h_i[-1]) to pass into a fully connected layer for a single prediction.(e,g最後一天股價)
+                if we want to get single value prediction for the entire sequence:
+                final_hidden_state = lstm_out[:, -1, :] 
+
+                
+                Sequence-to-Sequence: If you collect all hidden states (next_h_i at each time step) and produce outputs for each step.(e.g.文章每個字詞性分析)
+                # in init ： self.fc = nn.Linear(hidden_size, output_size)
+                out = self.fc(lstm_out)          # Fully connected layer applied to each time step
+                return out
+                https://chatgpt.com/share/675b22d9-4400-8013-8102-1a28d8c13ffe
+                '''
                 next_h_i, next_c_i = self.lstm_layers[i](s_i, (h_i, c_i))  #next_h_i：更新後的隱藏狀態(新的short term memory！，同時也是LSTM的final output！)，將在下一步作為 Self-Attention 的輸入。
                 next_h.append(next_h_i)#回想LSTM的圖片，這就等於是長長的short term memory往右邊又多了一筆資料。往右邊多新增了一個LSTM block
                 next_c.append(next_c_i)#長長的long term memory往右邊又多了一筆資料
@@ -479,6 +538,7 @@ class NCMultiAgentPolicy(Policy):
             h = torch.stack(attn_output_list)  # Shape: (n_agent, n_h)
             outputs.append(h.unsqueeze(0))    # Shape: (1, n_agent, n_h)
 
+    
         outputs = torch.cat(outputs)           # Shape: (batch, n_agent, n_h)
         return outputs, torch.cat([h, c], dim=1)
 
