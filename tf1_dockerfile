@@ -1,0 +1,65 @@
+# Base image with Ubuntu 20.04 and CUDA 11.1
+FROM nvidia/cuda:11.1.1-cudnn8-runtime-ubuntu20.04
+
+# Set timezone to non-interactive mode
+ENV DEBIAN_FRONTEND=noninteractive
+RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime && echo "UTC" > /etc/timezone
+
+# Install essential system packages and dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    wget \
+    curl \
+    git \
+    ca-certificates \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libffi-dev \
+    libssl-dev \
+    cmake \
+    swig \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Miniconda to /root/miniconda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh \
+    && /bin/bash /tmp/miniconda.sh -b -p /root/miniconda \
+    && rm /tmp/miniconda.sh \
+    && /root/miniconda/bin/conda clean -a -y \
+    && ln -s /root/miniconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
+
+# Set environment variables for Conda
+ENV PATH=/root/miniconda/bin:$PATH
+
+# 創建兩個獨立的 Conda 環境：一個用於 TF1，一個用於 TF2
+# 環境 1: TensorFlow 1.x 環境 (用於 deeprl_network)
+RUN conda create -n tf1 python=3.6.9 -y
+RUN /bin/bash -c "source activate tf1 \
+    && conda install -c conda-forge numpy scipy pandas matplotlib seaborn -y \
+    && pip install tensorflow==1.15.5 \
+    && pip install tensorboard==1.15.0 gym==0.17.3 \
+    && pip install eclipse-sumo==1.11.0"
+
+# 環境 2: 原來的 PyTorch + TF2 環境
+RUN conda create -n py36 python=3.6.9 -y
+RUN /bin/bash -c "source activate py36 \
+    && conda install -c conda-forge numpy scipy pandas matplotlib seaborn -y \
+    && conda install -c pytorch -c nvidia pytorch==1.9.0 torchvision torchaudio cudatoolkit=11.1 -y \
+    && pip install tensorflow==2.1.0 \
+    && pip install tensorboard gym stable-baselines3 'ray[rllib]' tianshou \
+    && pip install eclipse-sumo==1.11.0"
+
+# 設置方便切換環境的快捷命令
+RUN echo 'alias tf1="source activate tf1"' >> ~/.bashrc
+RUN echo 'alias tf2="source activate py36"' >> ~/.bashrc
+
+# 默認使用 tf1 環境 (適用於 deeprl_network)
+RUN echo 'source activate tf1' >> ~/.bashrc
+
+# Set the working directory
+WORKDIR /workspace
+
+# Default command
+CMD ["bash"]
