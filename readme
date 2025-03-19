@@ -16,6 +16,12 @@ docker 啟動!
 
 
 cd best_environment
+#######################原始論文2025/3/19版本#############
+docker run --gpus all -it \
+    -v /home/russell512/2025_3_19_original_paper_code/deeprl_network:/workspace \
+    best_environment:latest /bin/bash
+
+
 ################original#################
 
 docker run --gpus all -it -v /home/russell512/my_deeprl_network_ori:/workspace/my_deeprl_network best_environment:latest /bin/bash
