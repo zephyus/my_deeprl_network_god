@@ -47,6 +47,8 @@ export SUMO_HOME="/root/miniconda/envs/py36/share/sumo"
 進行訓練
 ###########################################
 python3 test.py --base-dir real_a1/ma2c_nclm/ --port 189 train --config-dir config/config_ma2c_nclm_net_ten_times.ini
+############ nc
+python3 test.py --base-dir real_a1/ma2c_nc/ --port 189 train --config-dir config/config_ma2c_nc_net_ten_times.ini
 ###新版本
 python3 main.py --base-dir real_a1/ma2c_nclm/ --port 189 train --config-dir config/config_ma2c_nc_net_ten.ini
 ###
