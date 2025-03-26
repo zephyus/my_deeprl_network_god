@@ -25,6 +25,7 @@ docker run --gpus all -it \
 ################original#################
 
 docker run --gpus all -it -v /home/russell512/my_deeprl_network_ori:/workspace/my_deeprl_network best_environment:latest /bin/bash
+docker run --gpus all -it -v /home/russell512/my_deeprl_network_ori_test:/workspace/my_deeprl_network best_environment:latest /bin/bash
 
 #################attention###############
 
